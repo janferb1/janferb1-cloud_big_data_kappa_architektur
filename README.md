@@ -116,8 +116,8 @@ timestamp,sensor_id,sensor_type,location,value,unit,status
 
 ```bash
 # 1. Repository klonen
-git clone https://github.com/<dein-user>/cloud_computing_big_data_abgabe.git
-cd cloud_computing_big_data_abgabe
+git clone https://github.com/janferb1/cloud_big_data_kappa_architektur.git
+cd cloud_big_data_kappa_architektur
 
 # 2. Alle Komponenten starten (Kafka, Streaming Server, Spark, MinIO)
 docker compose up --build
