@@ -32,7 +32,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     healthcheck:
-      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -66,7 +66,7 @@ services:
   # schreibt strukturierte Ergebnisse als Parquet nach MinIO
   # ---------------------------------------------------------------------------
   spark:
-    image: bitnami/spark:3
+    image: apache/spark:3.5.0
     container_name: spark-streaming
     depends_on:
       broker:
@@ -83,7 +83,7 @@ services:
     volumes:
       - ./spark:/opt/spark-app
     command: >
-      spark-submit
+      pip install numpy --quiet --break-system-packages && /opt/spark/bin/spark-submit --conf spark.jars.ivy=/tmp/.ivy2
       --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
       --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000
       --conf spark.hadoop.fs.s3a.access.key=minioadmin

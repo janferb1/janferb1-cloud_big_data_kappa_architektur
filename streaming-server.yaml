@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: streaming-server-container
-          image: localhost:5000/streaming-server:latest
-          imagePullPolicy: Always
+          image: streaming-server:latest
+          imagePullPolicy: Never
           env:
             - name: KAFKA_BROKER
               value: "kafka-service:9092"

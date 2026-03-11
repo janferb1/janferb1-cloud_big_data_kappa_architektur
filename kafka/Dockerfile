@@ -4,4 +4,5 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY streaming_server.py .
+COPY iot_sensor_data.csv data/iot_sensor_data.csv
 CMD ["python", "streaming_server.py"]
