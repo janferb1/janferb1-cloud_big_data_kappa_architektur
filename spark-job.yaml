@@ -12,7 +12,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: spark-driver
-          image: bitnami/spark:3.5
+          image: bitnami/spark:3
           command:
             - spark-submit
             - --master
