@@ -66,7 +66,7 @@ services:
   # schreibt strukturierte Ergebnisse als Parquet nach MinIO
   # ---------------------------------------------------------------------------
   spark:
-    image: bitnami/spark:3.5
+    image: bitnami/spark:3
     container_name: spark-streaming
     depends_on:
       broker:
