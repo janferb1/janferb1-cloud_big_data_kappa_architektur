@@ -1,0 +1,131 @@
+# =============================================================
+#  Kappa Architecture – IoT Sensor Data Pipeline
+#  docker-compose.yaml
+#
+#  Services:
+#    broker          – Apache Kafka (KRaft mode)
+#    streaming-server – Kafka Producer (reads CSV, sends to Kafka)
+#    spark           – PySpark Structured Streaming + KMeans
+#    minio           – Object Storage (Parquet output)
+#    minio-setup     – One-shot bucket creation
+#
+#  Start: docker compose up --build
+# =============================================================
+
+services:
+
+  # ── Kafka Broker (KRaft – no Zookeeper needed) ──────────────
+  broker:
+    image: apache/kafka:latest
+    container_name: broker
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - kappa_net
+
+  # ── MinIO Object Storage ────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - kappa_net
+
+  # ── MinIO Setup: create bucket ──────────────────────────────
+  minio-setup:
+    image: minio/mc:latest
+    container_name: minio-setup
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+        sleep 5;
+        mc alias set local http://minio:9000 minioadmin minioadmin;
+        mc mb --ignore-existing local/iot-output;
+        echo 'Bucket iot-output created';
+        exit 0;
+      "
+    networks:
+      - kappa_net
+
+  # ── Streaming Server (Kafka Producer) ───────────────────────
+  streaming-server:
+    build: ./kafka
+    container_name: streaming-server
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      FILE_PATH:    data/iot_sensor_data.csv
+      KAFKA_BROKER: broker:9092
+      KAFKA_TOPIC:  iot-sensor-topic
+      SEND_DELAY:   "0.1"
+    networks:
+      - kappa_net
+
+  # ── Spark Structured Streaming ──────────────────────────────
+  # Uses the professor's image (csturm/spark-py:v3.5.3) which
+  # already includes numpy, pandas, pyspark – no extra installs needed.
+  spark:
+    image: csturm/spark-py:v3.5.3
+    container_name: spark-streaming
+    depends_on:
+      broker:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER:   broker:9092
+      KAFKA_TOPIC:    iot-sensor-topic
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS:   minioadmin
+      MINIO_SECRET:   minioadmin
+      MINIO_BUCKET:   iot-output
+    volumes:
+      - ./spark/spark_streaming_app.py:/opt/spark/work-dir/spark_streaming_app.py
+    command: >
+      spark-submit
+      --master local[2]
+      --conf spark.jars.ivy=/tmp/.ivy2
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000
+      --conf spark.hadoop.fs.s3a.access.key=minioadmin
+      --conf spark.hadoop.fs.s3a.secret.key=minioadmin
+      --conf spark.hadoop.fs.s3a.path.style.access=true
+      --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+      --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
+      /opt/spark/work-dir/spark_streaming_app.py
+    networks:
+      - kappa_net
+
+# ── Volumes & Networks ──────────────────────────────────────────
+volumes:
+  minio_data:
+
+networks:
+  kappa_net:
+    driver: bridge
