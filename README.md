@@ -56,10 +56,7 @@ MinIO Object Storage
 git clone https://github.com/janferb1/janferb1-cloud_big_data_kappa_architektur.git
 cd janferb1-cloud_big_data_kappa_architektur
 
-# 2. CSV in den kafka-Ordner kopieren
-cp data/iot_sensor_data.csv kafka/
-
-# 3. Pipeline starten
+# 2. Pipeline starten
 docker compose up --build
 ```
 
