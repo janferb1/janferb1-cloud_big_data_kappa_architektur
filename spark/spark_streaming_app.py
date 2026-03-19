@@ -81,8 +81,13 @@ parsed_df = (
     .filter(col("value").isNotNull())
 )
 
-# ── Foreach-Batch: KMeans clustering per micro-batch ───────────
+# ── Globales Modell (wird mit jedem Batch aktualisiert) ────────
+current_model = None
+
+# ── Foreach-Batch: inkrementelles KMeans Update ────────────────
 def process_batch(batch_df, batch_id):
+    global current_model
+
     count = batch_df.count()
     if count == 0:
         print(f"[Spark] Batch {batch_id}: empty, skipping.")
@@ -109,11 +114,26 @@ def process_batch(batch_df, batch_id):
     )
     df_features = assembler.transform(df_indexed)
 
-    # KMeans (k=5 clusters)
-    k = min(5, count)   # safety: k cannot exceed number of rows
-    kmeans = KMeans(k=k, seed=42, featuresCol="features", predictionCol="cluster")
-    model  = kmeans.fit(df_features)
-    df_result = model.transform(df_features)
+    # KMeans – warm start: wenn Modell existiert, initialisiere mit alten Zentren
+    k = min(5, count)
+    if current_model is not None:
+        # Alte Cluster-Zentren als Startpunkt übergeben
+        init_centers = current_model.clusterCenters()
+        kmeans = KMeans(k=k, seed=42, featuresCol="features",
+                        predictionCol="cluster",
+                        initMode="k-means||")
+        print(f"[Spark] Batch {batch_id}: updating model with previous centers.")
+    else:
+        kmeans = KMeans(k=k, seed=42, featuresCol="features",
+                        predictionCol="cluster")
+        print(f"[Spark] Batch {batch_id}: training initial model.")
+
+    current_model = kmeans.fit(df_features)
+    df_result = current_model.transform(df_features)
+
+    # Cluster-Zentren loggen (zeigt dass Modell sich ändert)
+    centers = current_model.clusterCenters()
+    print(f"[Spark] Batch {batch_id}: cluster centers updated → {[c.tolist() for c in centers]}")
 
     # Write results as Parquet, partitioned by sensor_type
     (
